@@ -338,7 +338,7 @@ aes_key_t* get_aes_key(HCRYPTPROV prov, HCRYPTKEY rsa_key, const char *file)
     aes_key_t *aes_key=0;
     key_hdr   key;
     FILE      *in;
-    DWORD     mode, len;
+    DWORD     mode, len, padding;
     
     aes_key = malloc(sizeof(aes_key_t));
     
@@ -402,6 +402,9 @@ aes_key_t* get_aes_key(HCRYPTPROV prov, HCRYPTKEY rsa_key, const char *file)
       
       // set to use CBC mode
       CryptSetKeyParam(aes_key->key, KP_MODE, (PBYTE)&mode, 0);
+      
+      padding = PKCS5_PADDING;
+      CryptSetKeyParam(aes_key->key, KP_PADDING, (PBYTE)&padding, 0);
     }
     
     // fingers crossed :P
@@ -500,6 +503,7 @@ void decrypt(HCRYPTPROV prov, HCRYPTKEY rsa_key, const char *infile)
     BYTE      *buf;
     aes_key_t *aes_key=NULL;
     DWORD     len;
+    uint64_t  total, dataLen; 
     
     printf ("\n  [ reading from %s", infile);
     
@@ -526,21 +530,29 @@ void decrypt(HCRYPTPROV prov, HCRYPTKEY rsa_key, const char *infile)
         {
           // skip stuff in file to ciphertext  
           printf ("\n  [ reading data");
-          fseek(in, WC_DATA_OFFSET + 8, SEEK_SET);
+          fseek(in, WC_DATA_OFFSET, SEEK_SET);
           
-          for (;;) {
+          // read original file length
+          fread(&dataLen, 1, sizeof(uint64_t), in);
+          
+          for (total=0;; total += len) {
             // read in 1MB chunks
             len = fread(buf, 1, WC_BUF_SIZE, in);
         
             // no more data?
             if (len==0) break;
-
-            // decrypt block
-            if (!CryptDecrypt(aes_key->key, 0, TRUE, 
+            
+            // decrypt block but don't finalize
+            if (!CryptDecrypt(aes_key->key, 0, FALSE, 
                 0, buf, &len))
             {
-              xstrerror("CryptDecrypt");
+              xstrerror("Decryption: CryptDecrypt");
               break;
+            }
+            
+            // last block?
+            if (len < WC_BUF_SIZE) {
+              len = dataLen - total;
             }
 
             // write to file
