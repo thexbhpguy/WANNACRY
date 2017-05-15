@@ -475,6 +475,8 @@ void encrypt(HCRYPTPROV prov, HCRYPTKEY rsa_key, const char *infile)
             if (len==0) break;
 
             // encrypt block
+            // WanaCryptor uses zero padding
+            // so we shouldn't finalize encryption
             CryptEncrypt(aes_key->key, 0, len<WC_BUF_SIZE, 
                 0, buf, &len, WC_BUF_SIZE);
 
@@ -543,6 +545,9 @@ void decrypt(HCRYPTPROV prov, HCRYPTKEY rsa_key, const char *infile)
             if (len==0) break;
             
             // decrypt block but don't finalize
+            // WanaCryptor uses zero padding.
+            // if we finalize for last block, capi fails
+            // since it doesn't support zero padding
             if (!CryptDecrypt(aes_key->key, 0, FALSE, 
                 0, buf, &len))
             {
