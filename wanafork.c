@@ -402,9 +402,6 @@ aes_key_t* get_aes_key(HCRYPTPROV prov, HCRYPTKEY rsa_key, const char *file)
       
       // set to use CBC mode
       CryptSetKeyParam(aes_key->key, KP_MODE, (PBYTE)&mode, 0);
-      
-      padding = PKCS5_PADDING;
-      CryptSetKeyParam(aes_key->key, KP_PADDING, (PBYTE)&padding, 0);
     }
     
     // fingers crossed :P
@@ -469,15 +466,22 @@ void encrypt(HCRYPTPROV prov, HCRYPTKEY rsa_key, const char *infile)
           // encrypt data and write to archive
           for (;;) {
             // read in 1MB chunks
-            len = fread(buf, 1, WC_BUF_SIZE, in);
+            len = fread(buf, 1, WC_BUF_SIZE-16, in);
         
             // no more data?
             if (len==0) break;
 
+            if (len<(WC_BUF_SIZE-16)) {
+              memset(&buf[len], 0, (WC_BUF_SIZE-16)-len);
+              
+              if ((len & 15)) {
+                len = (len & -16) + 16;
+              }
+            }
             // encrypt block
             // WanaCryptor uses zero padding
             // so we shouldn't finalize encryption
-            CryptEncrypt(aes_key->key, 0, len<WC_BUF_SIZE, 
+            CryptEncrypt(aes_key->key, 0, FALSE, 
                 0, buf, &len, WC_BUF_SIZE);
 
             // write to file
@@ -545,9 +549,6 @@ void decrypt(HCRYPTPROV prov, HCRYPTKEY rsa_key, const char *infile)
             if (len==0) break;
             
             // decrypt block but don't finalize
-            // WanaCryptor uses zero padding.
-            // if we finalize for last block, capi fails
-            // since it doesn't support zero padding
             if (!CryptDecrypt(aes_key->key, 0, FALSE, 
                 0, buf, &len))
             {
